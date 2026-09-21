@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "FlowNexus Pro - Google Flow 2K Automator",
+  "version": "2.1.0",
+  "description": "Otomasi Batch Prompt & Auto-Download Gambar 2K Asli untuk Google Flow (flow.google.com).",
+  "permissions": [
+    "storage",
+    "downloads",
+    "sidePanel",
+    "activeTab",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://flow.google.com/*",
+    "*://*.googleusercontent.com/*",
+    "*://*.googleapis.com/*",
+    "*://*.google.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "panel.html",
+    "default_title": "FlowNexus Pro"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://flow.google.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

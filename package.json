@@ -1,0 +1,19 @@
+{
+  "name": "flownexus-pro",
+  "version": "2.1.0",
+  "description": "FlowNexus Pro - Google Flow 2K Batch Automator Chrome Extension",
+  "scripts": {
+    "zip": "powershell -Command \"Compress-Archive -Path 'chrome-extension\\*' -DestinationPath 'FlowNexus-Pro-v2.1.0.zip' -Force\"",
+    "validate": "node -c chrome-extension/panel.js && node -c chrome-extension/content.js && node -c chrome-extension/background.js"
+  },
+  "keywords": [
+    "google-flow",
+    "chrome-extension",
+    "imagen-3",
+    "batch-prompts",
+    "2k-upscaler",
+    "ai-automator"
+  ],
+  "author": "FlowNexus",
+  "license": "MIT"
+}

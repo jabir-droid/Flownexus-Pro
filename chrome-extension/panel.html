@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowNexus Pro</title>
+    <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top App Bar -->
+        <header class="app-header">
+            <div class="brand-row">
+                <div class="brand-title">
+                    <span class="brand-icon">⚡</span>
+                    <span class="brand-name">FlowNexus Pro</span>
+                    <span class="version-tag">2K HD</span>
+                </div>
+            </div>
+
+            <!-- Top Navigation Tabs -->
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="tab-control">
+                    <span class="tab-icon">🎛️</span> Kontrol
+                </button>
+                <button class="nav-tab" data-tab="tab-settings">
+                    <span class="tab-icon">⚙️</span> Pengaturan
+                </button>
+                <button class="nav-tab" data-tab="tab-logs">
+                    <span class="tab-icon">🔍</span> Log Debug
+                </button>
+            </nav>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="app-body">
+            <!-- TAB 1: KONTROL -->
+            <section id="tab-control" class="tab-pane active">
+
+                <!-- Parameters Row 1: Concurrent & Delay -->
+                <div class="param-card-row">
+                    <div class="param-card">
+                        <div class="param-header">
+                            <span class="param-icon">⚡</span>
+                            <span class="param-title">Prompt Bersamaan</span>
+                        </div>
+                        <select id="param-concurrency" class="form-select">
+                            <option value="1" selected>1 prompt (Stabil)</option>
+                            <option value="2">2 prompt</option>
+                            <option value="3">3 prompt</option>
+                        </select>
+                        <div class="param-desc">Jumlah prompt diproses sekaligus.</div>
+                    </div>
+
+                    <div class="param-card">
+                        <div class="param-header">
+                            <span class="param-icon">🕒</span>
+                            <span class="param-title">Penundaan Acak</span>
+                        </div>
+                        <div class="dual-range-inputs">
+                            <input type="number" id="param-delay-min" class="form-input num-input" value="3" min="0" max="60">
+                            <span class="range-arrow">⇄</span>
+                            <input type="number" id="param-delay-max" class="form-input num-input" value="10" min="0" max="120">
+                            <span class="unit-label">detik</span>
+                        </div>
+                        <div class="param-desc">Jeda acak sebelum prompt berikutnya.</div>
+                    </div>
+                </div>
+
+                <!-- Prompt Input Container -->
+                <div class="prompt-box-card">
+                    <!-- Subtabs for input methods -->
+                    <div class="subtabs-bar">
+                        <button class="subtab-btn active" data-input-mode="text">
+                            <span>✍️</span> Teks
+                        </button>
+                        <button class="subtab-btn" data-input-mode="txt">
+                            <span>📄</span> File .TXT
+                        </button>
+                        <button class="subtab-btn" data-input-mode="csv">
+                            <span>📊</span> File .CSV
+                        </button>
+                    </div>
+
+                    <!-- Input Mode 1: Textarea -->
+                    <div id="input-view-text" class="input-view">
+                        <textarea id="batch-prompts-input" class="prompt-textarea" rows="6" placeholder="Tempel 50+ prompt di sini...&#10;&#10;Pisahkan setiap prompt dengan baris kosong (Enter 2x) atau baris baru."></textarea>
+                        <div class="textarea-footer">
+                            <span id="prompt-stats-text">0 prompt terdeteksi (Siap)</span>
+                            <button id="btn-clear-prompts" class="mini-text-btn" title="Hapus teks prompt">Bersihkan</button>
+                        </div>
+                    </div>
+
+                    <!-- Input Mode 2: File TXT -->
+                    <div id="input-view-txt" class="input-view" style="display: none;">
+                        <div class="file-drop-area" id="txt-drop-area">
+                            <span class="drop-icon">📄</span>
+                            <div class="drop-title">Pilih atau Tarik File .TXT ke Sini</div>
+                            <div class="drop-sub">Setiap prompt dipisahkan oleh baris kosong atau baris baru.</div>
+                            <input type="file" id="file-txt-input" accept=".txt" style="display: none;">
+                            <button type="button" class="btn-secondary mini" onclick="document.getElementById('file-txt-input').click()">Pilih Berkas .txt</button>
+                        </div>
+                    </div>
+
+                    <!-- Input Mode 3: File CSV / XLSX -->
+                    <div id="input-view-csv" class="input-view" style="display: none;">
+                        <div class="file-drop-area" id="csv-drop-area">
+                            <span class="drop-icon">📊</span>
+                            <div class="drop-title">Pilih atau Tarik File .CSV ke Sini</div>
+                            <div class="drop-sub">Kolom pertama atau kolom bertajuk 'prompt' akan diambil otomatis.</div>
+                            <input type="file" id="file-csv-input" accept=".csv, .tsv, .xlsx" style="display: none;">
+                            <button type="button" class="btn-secondary mini" onclick="document.getElementById('file-csv-input').click()">Pilih Berkas CSV</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parameters Row 2: Outputs & Folder -->
+                <div class="param-card-row">
+                    <div class="param-card">
+                        <div class="param-header">
+                            <span class="param-icon">📋</span>
+                            <span class="param-title">Output per Prompt</span>
+                        </div>
+                        <select id="param-variations" class="form-select">
+                            <option value="1" selected>1 gambar (Cepat)</option>
+                            <option value="2">2 gambar (Variasi)</option>
+                            <option value="3">3 gambar</option>
+                            <option value="4">4 gambar</option>
+                        </select>
+                        <div class="param-desc">Jumlah variasi hasil per prompt.</div>
+                    </div>
+
+                    <div class="param-card">
+                        <div class="param-header">
+                            <span class="param-icon">📁</span>
+                            <span class="param-title">Simpan ke Folder</span>
+                        </div>
+                        <input type="text" id="param-subfolder" class="form-input" value="flow-harvest" placeholder="Subfolder di Downloads">
+                        <div class="param-desc">Lokasi subfolder di folder Downloads.</div>
+                    </div>
+                </div>
+
+                <!-- Parameters Row 3: Custom / Thematic Filename Pattern -->
+                <div class="param-card param-card-full">
+                    <div class="param-header">
+                        <span class="param-icon">🏷️</span>
+                        <span class="param-title">Pola Nama File Gambar</span>
+                    </div>
+                    <input type="text" id="param-custom-filename" class="form-input" placeholder="Kosongkan untuk otomatis tema prompt (1, 2, 3...)">
+                    <div class="param-desc">
+                        Otomatis mengambil tema prompt + nomor (contoh: <code>halloween_pumpkins_1.jpg</code>). Jika diisi kustom (contoh: <code>labu</code>), menjadi: <code>labu_1.jpg</code>, <code>labu_2.jpg</code>, dst.
+                    </div>
+                </div>
+
+                <!-- Hint Banner -->
+                <div class="settings-hint-box">
+                    <span>✨ Otomatis mengunduh resolusi <strong>2K Penuh</strong>. Atur rasio aspek (16:9 / 9:16 / 1:1) di tab <strong>Pengaturan</strong>.</span>
+                </div>
+
+                <!-- Toggles Row -->
+                <div class="toggles-card">
+                    <div class="toggle-row">
+                        <div class="toggle-info">
+                            <div class="toggle-label">Ubah nama file otomatis</div>
+                            <div class="toggle-desc">Menyimpan nama berdasarkan prompt dan nomor urut.</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-autoname" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+
+                    <div class="toggle-row" style="margin-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+                        <div class="toggle-info">
+                            <div class="toggle-label">Buka folder setelah selesai</div>
+                            <div class="toggle-desc">Membuka folder Downloads saat seluruh batch tuntas.</div>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="toggle-openfolder" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Action Controls Bar -->
+                <div class="actions-group">
+                    <button id="btn-start-batch" class="btn-primary-glow">
+                        <span class="btn-icon">🚀</span> Mulai Batch Otomatis
+                    </button>
+                    <div class="secondary-actions-row">
+                        <button id="btn-pause-batch" class="btn-secondary" disabled>
+                            <span>⏸️</span> Jeda
+                        </button>
+                        <button id="btn-stop-batch" class="btn-secondary" disabled>
+                            <span>⏹️</span> Berhenti
+                        </button>
+                        <button id="btn-clear-queue" class="btn-secondary">
+                            <span>🗑️</span> Kosongkan
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Queue Section -->
+                <div class="queue-section">
+                    <div class="queue-header">
+                        <div class="queue-title-wrap">
+                            <span class="queue-icon">📋</span>
+                            <span class="queue-title">ANTREAN PROMPT</span>
+                        </div>
+                        <span id="queue-count-badge" class="badge-count">0 aktif</span>
+                    </div>
+
+                    <div id="queue-list" class="queue-list">
+                        <div id="queue-empty-state" class="queue-empty">
+                            <span class="empty-icon">☕</span>
+                            <div class="empty-title">Antrean Masih Kosong</div>
+                            <div class="empty-sub">Tempel prompt di atas, lalu klik Mulai Batch Otomatis.</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 2: PENGATURAN -->
+            <section id="tab-settings" class="tab-pane">
+                <div class="settings-group">
+                    <div class="settings-item">
+                        <label class="settings-label">
+                            <span>⚙️</span> Model AI Gambar
+                        </label>
+                        <select id="setting-image-model" class="form-select">
+                            <option value="Imagen 3 (Default Flow)" selected>Imagen 3 (Default Google Flow)</option>
+                            <option value="Nano Banana 2">Nano Banana 2</option>
+                            <option value="Ultra Detail HD">Ultra Detail HD</option>
+                        </select>
+                        <div class="settings-sub">Pilih model AI yang digunakan untuk pembuatan gambar.</div>
+                    </div>
+
+                    <div class="settings-item">
+                        <label class="settings-label">
+                            <span>🖼️</span> Rasio Aspek Gambar
+                        </label>
+                        <select id="setting-aspect-ratio" class="form-select">
+                            <option value="16:9" selected>16:9 (Landscape / YouTube / Adobe Stock)</option>
+                            <option value="9:16">9:16 (TikTok / Reels / Shorts / Portrait)</option>
+                            <option value="1:1">1:1 (Square / Feed)</option>
+                            <option value="4:3">4:3 (Standard Classic)</option>
+                            <option value="3:4">3:4 (Vertical Classic)</option>
+                        </select>
+                        <div class="settings-sub">Format proporsi gambar saat digenerate oleh Flow.</div>
+                    </div>
+
+                    <div class="settings-item">
+                        <label class="settings-label">
+                            <span>🔄</span> Maksimal Percobaan Ulang saat Gagal
+                        </label>
+                        <div class="stepper-input-wrap">
+                            <button type="button" class="stepper-btn" id="btn-retry-minus">-</button>
+                            <input type="number" id="setting-max-retries" class="stepper-value" value="2" min="0" max="10" readonly>
+                            <button type="button" class="stepper-btn" id="btn-retry-plus">+</button>
+                        </div>
+                        <div class="settings-sub">Jumlah pengulangan otomatis jika render terkendala jaringan (0-10).</div>
+                    </div>
+
+                    <div class="settings-item">
+                        <label class="settings-label">
+                            <span>📥</span> Kualitas Unduhan Otomatis
+                        </label>
+                        <select id="setting-image-quality" class="form-select">
+                            <option value="2k" selected>2K HD (Resolusi Penuh 2752x1536 - Maksimal)</option>
+                            <option value="1k">1K (Resolusi Standar 1376x768)</option>
+                        </select>
+                        <div class="settings-sub">Sistem secara default mengunci kualitas unduhan ke 2K penuh (2752x1536).</div>
+                    </div>
+
+                    <div class="settings-item">
+                        <label class="settings-label">
+                            <span>🌐</span> Bahasa Antarmuka
+                        </label>
+                        <select id="setting-language" class="form-select">
+                            <option value="id" selected>Bahasa Indonesia</option>
+                            <option value="en">English</option>
+                        </select>
+                        <div class="settings-sub">Bahasa tampilan pada ekstensi.</div>
+                    </div>
+
+                    <!-- Download Folder Info Card -->
+                    <div class="download-info-card">
+                        <span class="info-icon">📥</span>
+                        <div class="info-text">
+                            <strong>Folder Unduhan Chrome:</strong><br>
+                            Gambar 2K akan langsung tersimpan di folder <code>Downloads/[subfolder]/</code> browser Anda tanpa kotak dialog konfirmasi.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="settings-footer-actions">
+                    <button type="button" id="btn-reset-settings" class="btn-secondary">
+                        <span>🔄</span> Atur Ulang
+                    </button>
+                    <button type="button" id="btn-save-settings" class="btn-primary-compact">
+                        <span>✓</span> Simpan Pengaturan
+                    </button>
+                </div>
+            </section>
+
+            <!-- TAB 3: LOG DEBUG -->
+            <section id="tab-logs" class="tab-pane">
+                <div class="logs-header-bar">
+                    <div class="logs-count" id="log-count-text">0 baris log</div>
+                    <div class="logs-action-btns">
+                        <button id="btn-copy-logs" class="btn-secondary mini">
+                            <span>📋</span> Salin Log
+                        </button>
+                        <button id="btn-clear-logs" class="btn-secondary mini">
+                            <span>🗑️</span> Bersihkan
+                        </button>
+                    </div>
+                </div>
+
+                <div id="debug-log-console" class="debug-console">
+                    <div class="log-line info">
+                        <span class="log-time">[Init]</span> FlowNexus Pro siap digunakan.
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Inactive Flow Tab Blur Overlay -->
+        <div id="flow-inactive-overlay" class="flow-inactive-overlay">
+            <div class="inactive-modal-card">
+                <div class="inactive-icon-pulse">
+                    <span class="inactive-glow-ring"></span>
+                    <span class="inactive-icon">⚠️</span>
+                </div>
+                <h3 class="inactive-title">Tab Google Flow Tidak Aktif</h3>
+                <p class="inactive-desc">
+                    FlowNexus Pro memerlukan tab Google Flow tetap terbuka dan aktif di layar browser Anda agar proses pengetikan prompt dan pengambilan gambar <strong>2K (2752x1536)</strong> berjalan lancar.
+                </p>
+                <div class="inactive-status-box">
+                    <span class="pulse-dot-amber"></span>
+                    <span>Silakan kembali ke tab Google Flow...</span>
+                </div>
+                <button type="button" id="btn-focus-flow-tab" class="btn-focus-flow">
+                    <span class="btn-flow-icon">⚡</span>
+                    <span>Kembali / Buka Tab Google Flow</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="panel.js"></script>
+</body>
+</html>
