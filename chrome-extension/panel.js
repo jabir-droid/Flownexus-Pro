@@ -589,6 +589,23 @@
         let targetTab = tabs.find(t => t.url && t.url.includes('/project/')) || tabs.find(t => t.active) || tabs[0];
         currentTabId = targetTab.id;
 
+        // Ensure user is inside an active project canvas (/project/...)
+        if (!targetTab.url || !targetTab.url.includes('/project/')) {
+            const projectTab = tabs.find(t => t.url && t.url.includes('/project/'));
+            if (projectTab) {
+                targetTab = projectTab;
+                currentTabId = targetTab.id;
+                await chrome.tabs.update(currentTabId, { active: true });
+                if (targetTab.windowId) {
+                    await chrome.windows.update(targetTab.windowId, { focused: true });
+                }
+            } else {
+                alert('Silakan buka salah satu Project Anda di Google Flow terlebih dahulu (atau klik "+ Project baru").\n\nKotak input prompt hanya tersedia di dalam kanvas proyek.');
+                addLog('Silakan klik salah satu kartu proyek Anda di Google Flow (atau "+ Project baru") agar kanvas aktif.', 'warn');
+                return;
+            }
+        }
+
         // Auto-inject content script if not already loaded in the tab
         addLog('Memeriksa koneksi tab Google Flow...', 'info');
         await ensureContentScriptInjected(currentTabId);
