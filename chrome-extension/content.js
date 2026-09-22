@@ -261,7 +261,7 @@
     }
 
     // 4. Find Submit (Arrow ➔) Button Across Document Piercing Shadow DOM
-    function findSubmitButton(inputEl) {
+    function findSubmitButtons(inputEl) {
         // Collect ALL button and clickable elements in the entire document
         const allButtons = [];
         function scanButtons(root, depth = 0) {
@@ -292,6 +292,12 @@
             const rect = b.getBoundingClientRect();
             // Must be visible and located in the bottom 45% of viewport (the dock area)
             if (rect.bottom < (window.innerHeight * 0.55) || rect.width < 14 || rect.height < 14) return false;
+
+            // CRITICAL FIX: Exclude cdkoverlayorigin (this is the overlay OPENER trigger, NOT the submit button!)
+            if (b.hasAttribute('cdkoverlayorigin') || b.hasAttribute('cdk-overlay-origin')) {
+                return false;
+            }
+
             const label = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '') + ' ' + (b.title || '')).toLowerCase();
             return !isDisallowed(label);
         });
@@ -319,12 +325,12 @@
             if (svg) {
                 const svgHtml = svg.innerHTML.toLowerCase();
                 if (svgHtml.includes('arrow') || svgHtml.includes('send') || svgHtml.includes('polygon') || svgHtml.includes('m2.01') || svgHtml.includes('path')) {
-                    score += 70;
+                    score += 80;
                 }
             }
 
-            // Rightmost position: In Google Flow, the white arrow button is always the rightmost element in the dock
-            score += (rect.right / window.innerWidth) * 80;
+            // Rightmost position: In Google Flow, the white arrow button is always at the far right of the dock
+            score += (rect.right / window.innerWidth) * 100;
 
             // Circular / square button shape (~24-70px)
             if (Math.abs(rect.width - rect.height) < 15 && rect.width >= 24 && rect.width <= 70) {
@@ -337,10 +343,16 @@
             }
         }
 
-        if (bestBtn) {
-            console.log('[FlowNexus Pro] Tombol panah submit diidentifikasi:', bestBtn, 'Score:', bestScore);
-        }
-        return bestBtn;
+        // Also identify the rightmost button in the bottom dock as an absolute fallback
+        const sortedByRight = [...dockButtons].sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right);
+        const rightmostBtn = sortedByRight[0] || null;
+
+        const results = [];
+        if (bestBtn) results.push(bestBtn);
+        if (rightmostBtn && rightmostBtn !== bestBtn) results.push(rightmostBtn);
+
+        console.log('[FlowNexus Pro] Tombol submit yang ditemukan:', results);
+        return results;
     }
 
     // 5. Execute Render Workflow for One Prompt (STAYS ON CURRENT PROJECT CANVAS)
@@ -454,11 +466,12 @@
         updateBadge(`<strong>[#${taskId}] Mengirim Prompt ke Flow...</strong>`, '#ffd600');
         let submitted = false;
         for (let attempt = 1; attempt <= 5; attempt++) {
-            const submitBtn = findSubmitButton(input);
-            if (submitBtn) {
+            const submitBtns = findSubmitButtons(input);
+            for (const submitBtn of submitBtns) {
                 console.log(`[FlowNexus Pro] Menekan tombol panah submit (percobaan #${attempt}):`, submitBtn);
                 triggerButtonClick(submitBtn);
-            } else {
+            }
+            if (submitBtns.length === 0) {
                 console.warn(`[FlowNexus Pro] Tombol panah submit belum ditemukan (percobaan #${attempt})...`);
             }
 
