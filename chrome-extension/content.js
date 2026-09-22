@@ -21,13 +21,13 @@
     const oldBadge = document.getElementById('flow-batch-pro-badge') || document.getElementById('assetnexus-bridge-badge');
     if (oldBadge) oldBadge.remove();
 
-    // 1. Floating Canvas HUD Badge (Bottom Right)
+    // 1. Floating Canvas HUD Badge (Top Right to avoid blocking bottom dock)
     const badge = document.createElement('div');
     badge.id = 'flow-batch-pro-badge';
     badge.style.cssText = `
         position: fixed;
-        bottom: 24px;
-        right: 24px;
+        top: 16px;
+        right: 16px;
         background: rgba(12, 16, 23, 0.95);
         border: 1.5px solid #00ffaa;
         box-shadow: 0 0 25px rgba(0, 255, 170, 0.35);
@@ -43,6 +43,7 @@
         backdrop-filter: blur(12px);
         transition: all 0.25s ease;
         user-select: none;
+        pointer-events: none;
     `;
     badge.innerHTML = `
         <span id="fbp-status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: #00ffaa; box-shadow: 0 0 8px #00ffaa; display: inline-block; flex-shrink: 0;"></span>
@@ -64,36 +65,52 @@
     console.log('%c[Flow Batch Pro]%c v2.1 Siap pada Google Flow Canvas!', 'color:#00ffaa; font-weight:bold;', 'color:#fff;');
 
     // 2. Safe Input Value Setter (React / Custom Web Component Compatible)
+    // 2. Safe Input Value Setter (Native Typing Simulation for Angular & Google Flow)
     function setInputValue(element, text) {
         element.focus();
+
+        // 1. Select all existing text
+        if (element.select) {
+            try { element.select(); } catch(e) {}
+        }
+
+        // 2. Native text insertion using document.execCommand
+        // This fires beforeinput and input events natively, triggering Angular's reactive form controls
+        let inserted = false;
+        try {
+            document.execCommand('selectAll', false, null);
+            inserted = document.execCommand('insertText', false, text);
+        } catch (e) {}
 
         const tag = element.tagName ? element.tagName.toLowerCase() : '';
         const isTextArea = tag === 'textarea';
         const isInput = tag === 'input';
 
-        if (isTextArea || isInput) {
-            const proto = isTextArea ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
-            if (descriptor && descriptor.set) {
-                descriptor.set.call(element, text);
+        // 3. Fallback descriptor setter if execCommand didn't apply
+        if (!inserted || (element.value !== text && (!element.innerText || !element.innerText.includes(text.slice(0, 10))))) {
+            if (isTextArea || isInput) {
+                const proto = isTextArea ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+                const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+                if (descriptor && descriptor.set) {
+                    descriptor.set.call(element, text);
+                } else {
+                    element.value = text;
+                }
             } else {
-                element.value = text;
-            }
-        }
-
-        if (element.isContentEditable || element.getAttribute('contenteditable') !== null || element.getAttribute('role') === 'textbox') {
-            element.focus();
-            try {
-                document.execCommand('selectAll', false, null);
-                document.execCommand('delete', false, null);
-                document.execCommand('insertText', false, text);
-            } catch (e) {}
-            if (!element.innerText || !element.innerText.includes(text.slice(0, 10))) {
                 element.innerText = text;
             }
         }
 
+        // 4. Dispatch full spectrum of input events for Angular change detection
         element.dispatchEvent(new Event('focus', { bubbles: true }));
+        try {
+            element.dispatchEvent(new InputEvent('beforeinput', {
+                bubbles: true,
+                composed: true,
+                inputType: 'insertText',
+                data: text
+            }));
+        } catch (e) {}
         element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
         try {
             element.dispatchEvent(new InputEvent('input', {
@@ -104,57 +121,44 @@
             }));
         } catch (e) {}
         element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
+        element.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: ' ' }));
         element.focus();
     }
 
-    // 3. Deep Shadow-DOM Piercing Locator (STRICTLY IN LOWER HALF OF SCREEN)
+    // 3. Deep Shadow-DOM Piercing Locator (PRIORITIZES BOTTOM PROMPT DOCK OVER OLD CANVAS CARDS)
     function findPromptInputDeep() {
-        let candidate = null;
+        const candidates = [];
 
         function scan(root, depth = 0) {
-            if (!root || candidate || depth > 10) return;
+            if (!root || depth > 10) return;
 
-            // 1. Textareas in lower half
+            // 1. Textareas in lower screen portion
             const textareas = Array.from(root.querySelectorAll ? root.querySelectorAll('textarea') : []);
             for (const t of textareas) {
                 const r = t.getBoundingClientRect();
-                if (r.width > 50 && r.height > 6 && r.top > (window.innerHeight * 0.35) && window.getComputedStyle(t).display !== 'none') {
-                    candidate = t;
-                    return;
+                if (r.width > 50 && r.height > 6 && r.bottom > (window.innerHeight * 0.45) && window.getComputedStyle(t).display !== 'none') {
+                    const ph = ((t.placeholder || '') + ' ' + (t.getAttribute('aria-label') || '') + ' ' + (t.getAttribute('data-placeholder') || '')).toLowerCase();
+                    candidates.push({ el: t, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.75) });
                 }
             }
 
-            // 2. contenteditable or role="textbox" in lower half
+            // 2. contenteditable or role="textbox"
             const editables = Array.from(root.querySelectorAll ? root.querySelectorAll('[contenteditable], [role="textbox"], [role="combobox"]') : []);
             for (const el of editables) {
                 const r = el.getBoundingClientRect();
-                if (r.width > 50 && r.height > 6 && r.top > (window.innerHeight * 0.35)) {
-                    const text = (el.innerText || '').toLowerCase();
-                    const aria = (el.getAttribute('aria-label') || '').toLowerCase();
-                    const ph = (el.getAttribute('data-placeholder') || el.getAttribute('placeholder') || '').toLowerCase();
-                    if (ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || aria.includes('prompt') || text.includes('apa yang')) {
-                        candidate = el;
-                        return;
-                    }
-                    if (r.width > 120 && !candidate) {
-                        candidate = el;
-                    }
+                if (r.width > 50 && r.height > 6 && r.bottom > (window.innerHeight * 0.45)) {
+                    const ph = ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-placeholder') || '')).toLowerCase();
+                    candidates.push({ el: el, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.75) });
                 }
             }
 
-            // 3. Inputs in lower half (e.g. placeholder: "Apa yang ingin Anda buat?")
+            // 3. Inputs (e.g. placeholder: "Apa yang ingin Anda buat?")
             const inputs = Array.from(root.querySelectorAll ? root.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])') : []);
             for (const inp of inputs) {
                 const r = inp.getBoundingClientRect();
-                if (r.top > (window.innerHeight * 0.35)) {
+                if (r.bottom > (window.innerHeight * 0.45)) {
                     const ph = ((inp.placeholder || '') + ' ' + (inp.getAttribute('aria-label') || '') + ' ' + (inp.getAttribute('data-placeholder') || '')).toLowerCase();
-                    if (ph.includes('buat') || ph.includes('apa yang') || ph.includes('prompt') || ph.includes('describe') || ph.includes('create')) {
-                        candidate = inp;
-                        return;
-                    }
-                    if (r.width > 120 && !candidate) {
-                        candidate = inp;
-                    }
+                    candidates.push({ el: inp, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.75) });
                 }
             }
 
@@ -163,30 +167,39 @@
             for (const node of all) {
                 if (node.shadowRoot) {
                     scan(node.shadowRoot, depth + 1);
-                    if (candidate) return;
                 }
             }
         }
 
         scan(document);
-        return candidate;
+
+        if (candidates.length === 0) return null;
+
+        // Prioritize: 1) marked as dock, 2) closest to the bottom of the viewport
+        candidates.sort((a, b) => {
+            if (a.isDock && !b.isDock) return -1;
+            if (!a.isDock && b.isDock) return 1;
+            return b.rect.bottom - a.rect.bottom;
+        });
+
+        return candidates[0].el;
     }
 
-    // 4. Find Submit Button STRICTLY INSIDE THE DOCK (Arrow Button →)
+    // 4. Find Submit Button STRICTLY INSIDE THE DOCK (Arrow Button → or "Mulai pembuatan")
     function findSubmitButton(inputEl) {
         if (!inputEl) return null;
 
         // Climb to prompt dock container (must be in lower half of screen)
         let container = inputEl.closest('form, [class*="dock"], [class*="bar"], [class*="prompt"], [class*="input"], [class*="container"]') || inputEl.parentElement;
-        for (let i = 0; i < 4; i++) {
-            if (container && container.parentElement && container.parentElement.getBoundingClientRect().top > (window.innerHeight * 0.45)) {
+        for (let i = 0; i < 5; i++) {
+            if (container && container.parentElement && container.parentElement.getBoundingClientRect().bottom > (window.innerHeight * 0.5)) {
                 container = container.parentElement;
             } else {
                 break;
             }
         }
 
-        if (!container) return null;
+        if (!container) container = document;
 
         // Disallowed labels to prevent clicking clear, settings, or variations
         const isDisallowed = (label) => {
@@ -200,28 +213,31 @@
         const dockButtons = Array.from(container.querySelectorAll('button, [role="button"]')).filter(b => {
             if (b === inputEl || b.disabled || b.getAttribute('aria-disabled') === 'true') return false;
             const rect = b.getBoundingClientRect();
-            // Must be strictly at the bottom
-            if (rect.top < (window.innerHeight * 0.45)) return false;
+            if (rect.bottom < (window.innerHeight * 0.45)) return false;
             const label = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '') + ' ' + (b.title || '')).toLowerCase();
             return !isDisallowed(label);
         });
 
-        // Priority 1: Arrow icon button (SVG with arrow / send)
+        // Priority 1: Exact generate button label ("Mulai pembuatan", "generate", "submit", "kirim")
         for (const b of dockButtons) {
-            const svg = b.querySelector('svg');
-            if (svg) {
-                const html = svg.innerHTML.toLowerCase();
-                if (html.includes('arrow') || html.includes('send') || html.includes('path') || html.includes('m2.01') || html.includes('polygon')) {
-                    return b;
-                }
-            }
             const label = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '')).toLowerCase();
-            if (label.includes('kirim') || label.includes('send') || label.includes('submit') || label.includes('generate')) {
+            if (label.includes('pembuatan') || label.includes('buat') || label.includes('generate') || label.includes('kirim') || label.includes('submit')) {
                 return b;
             }
         }
 
-        // Priority 2: Rightmost button in the dock
+        // Priority 2: Arrow icon button (SVG with arrow / send)
+        for (const b of dockButtons) {
+            const svg = b.querySelector('svg');
+            if (svg) {
+                const html = svg.innerHTML.toLowerCase();
+                if (html.includes('arrow') || html.includes('send') || html.includes('polygon') || html.includes('m2.01')) {
+                    return b;
+                }
+            }
+        }
+
+        // Priority 3: Rightmost button in the dock
         if (dockButtons.length > 0) {
             dockButtons.sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right);
             return dockButtons[0];
@@ -268,18 +284,73 @@
         input.focus();
         await new Promise(r => setTimeout(r, 300));
 
+        // Helper: Collect all <img> elements including inside Shadow DOM
+        function getAllImagesDeep(root = document) {
+            const list = [];
+            function traverse(node) {
+                if (!node) return;
+                if (node.tagName && node.tagName.toLowerCase() === 'img') {
+                    list.push(node);
+                }
+                if (node.shadowRoot) {
+                    traverse(node.shadowRoot);
+                }
+                const children = node.children || [];
+                for (let i = 0; i < children.length; i++) {
+                    traverse(children[i]);
+                }
+            }
+            traverse(root);
+            return list;
+        }
+
+        // Helper: Detect active error or quota popups from Google Flow UI
+        function checkGoogleFlowErrorMessage() {
+            const errorSelectors = [
+                '[role="alert"]',
+                '.error-message',
+                '.toast',
+                '.mat-mdc-snack-bar-label',
+                '.notification',
+                '.cdk-overlay-container',
+                'flow-toast',
+                'flow-snackbar'
+            ];
+            for (const sel of errorSelectors) {
+                const els = document.querySelectorAll(sel);
+                for (const el of els) {
+                    const text = (el.innerText || '').trim();
+                    if (text.length > 5 && (
+                        text.toLowerCase().includes('quota') ||
+                        text.toLowerCase().includes('limit') ||
+                        text.toLowerCase().includes('batas') ||
+                        text.toLowerCase().includes('kredit') ||
+                        text.toLowerCase().includes('credit') ||
+                        text.toLowerCase().includes('policy') ||
+                        text.toLowerCase().includes('kebijakan') ||
+                        text.toLowerCase().includes('tidak dapat') ||
+                        text.toLowerCase().includes('unable to') ||
+                        text.toLowerCase().includes('error')
+                    )) {
+                        return text;
+                    }
+                }
+            }
+            return null;
+        }
+
         // Snapshot all existing images on the page BEFORE submitting
         const preExistingSrcSet = new Set();
-        document.querySelectorAll('img').forEach(img => {
+        getAllImagesDeep(document).forEach(img => {
             if (img.src) preExistingSrcSet.add(img.src);
         });
 
         // Type prompt safely
         updateBadge(`<strong>[#${taskId}] Mengetik Prompt 2K...</strong>`, '#ffd600');
         setInputValue(input, prompt);
-        await new Promise(r => setTimeout(r, 500));
+        await new Promise(r => setTimeout(r, 600));
 
-        // Submit (Dual Trigger: Dock Arrow Button + Keyboard Enter)
+        // Submit (Dual Trigger: Dock Arrow Button + Keyboard Enter for robust Angular handling)
         const submitBtn = findSubmitButton(input);
         if (submitBtn) {
             console.log('[FlowNexus Pro] Mengklik tombol panah submit di dock:', submitBtn);
@@ -287,9 +358,12 @@
             ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evtType => {
                 submitBtn.dispatchEvent(new MouseEvent(evtType, { bubbles: true, cancelable: true, view: window }));
             });
+            try { submitBtn.click(); } catch(e) {}
+        } else {
+            console.log('[FlowNexus Pro] Tombol submit tidak terdeteksi di dock, menggunakan tombol Enter...');
         }
 
-        // Always also dispatch Enter key on the input to ensure submission
+        // Always also dispatch Enter key on the input to ensure submission in Angular
         await new Promise(r => setTimeout(r, 250));
         input.focus();
         ['keydown', 'keypress', 'keyup'].forEach(evtType => {
@@ -316,25 +390,30 @@
 
             const elapsedSec = Math.round((Date.now() - submitTime) / 1000);
 
+            // Fast-check if Google Flow displayed a quota or policy error toast
+            const errorMsg = checkGoogleFlowErrorMessage();
+            if (errorMsg) {
+                console.error('[FlowNexus Pro] Pesan peringatan terdeteksi di UI Google Flow:', errorMsg);
+                throw new Error(`Google Flow: "${errorMsg.slice(0, 100)}". Kemungkinan kuota/kredit harian habis atau prompt dibatasi.`);
+            }
+
             // Wait at least 6s to skip old instant DOM elements
             if (elapsedSec < 6) {
                 updateBadge(`<strong>[#${taskId}] Merender (${elapsedSec}s)...</strong>`, '#00e5ff');
                 continue;
             }
 
-            const candidateImages = Array.from(document.querySelectorAll('img')).filter(img => {
+            // Scan all images (including inside Shadow DOM and responsive canvas cards)
+            const candidateImages = getAllImagesDeep(document).filter(img => {
                 const src = img.src || '';
-                return (
-                    src &&
-                    !preExistingSrcSet.has(src) &&
-                    !src.startsWith('data:image/svg') &&
-                    !src.includes('avatar') &&
-                    !src.includes('googlelogo') &&
-                    !src.includes('icon') &&
-                    !src.includes('profile') &&
-                    img.complete &&
-                    (img.naturalWidth >= 400 || img.offsetWidth >= 350)
-                );
+                if (!src || preExistingSrcSet.has(src)) return false;
+                if (src.startsWith('data:image/svg') || src.includes('avatar') || src.includes('googlelogo') || src.includes('icon') || src.includes('profile')) return false;
+                
+                // If it's from Google's image CDN, it's definitely a generated asset
+                if (src.includes('googleusercontent.com') || src.includes('googleapis.com')) {
+                    return true;
+                }
+                return img.complete && (img.naturalWidth >= 80 || img.offsetWidth >= 80);
             });
 
             if (candidateImages.length > 0) {
@@ -356,7 +435,7 @@
         }
 
         if (capturedImages.length === 0) {
-            throw new Error('Google Flow belum selesai merender gambar 2K setelah 110 detik.');
+            throw new Error('Google Flow belum selesai merender gambar 2K setelah 110 detik. Pastikan kredit kuota harian akun Google Anda belum habis dan periksa error di DevTools.');
         }
 
         updateBadge(`<strong>✅ [#${taskId}] Selesai (${capturedImages.length} gambar 2K HD)!</strong>`, '#00ffaa');
