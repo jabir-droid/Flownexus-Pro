@@ -16,6 +16,7 @@
 
     const currentInstance = Date.now() + '_' + Math.random();
     window._flowBatchProInstance = currentInstance;
+    let isRenderAborted = false;
 
     // Clean up any old floating badge
     const oldBadge = document.getElementById('flow-batch-pro-badge') || document.getElementById('assetnexus-bridge-badge');
@@ -185,65 +186,108 @@
         return candidates[0].el;
     }
 
-    // 4. Find Submit Button STRICTLY INSIDE THE DOCK (Arrow Button → or "Mulai pembuatan")
-    function findSubmitButton(inputEl) {
-        if (!inputEl) return null;
+    // Helper: Trigger realistic user click with center coordinates
+    function triggerButtonClick(btn) {
+        if (!btn) return false;
+        try {
+            btn.focus();
+            const rect = btn.getBoundingClientRect();
+            const clientX = rect.left + rect.width / 2;
+            const clientY = rect.top + rect.height / 2;
+            const opts = { bubbles: true, cancelable: true, view: window, clientX, clientY };
 
-        // Climb to prompt dock container (must be in lower half of screen)
-        let container = inputEl.closest('form, [class*="dock"], [class*="bar"], [class*="prompt"], [class*="input"], [class*="container"]') || inputEl.parentElement;
-        for (let i = 0; i < 5; i++) {
-            if (container && container.parentElement && container.parentElement.getBoundingClientRect().bottom > (window.innerHeight * 0.5)) {
-                container = container.parentElement;
-            } else {
-                break;
+            ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {
+                btn.dispatchEvent(new MouseEvent(evt, opts));
+            });
+            btn.click();
+            return true;
+        } catch (e) {
+            console.warn('[FlowNexus Pro] triggerButtonClick error:', e);
+            try { btn.click(); } catch(e2) {}
+            return false;
+        }
+    }
+
+    // 4. Find Submit (Arrow ➔) Button Across Document Piercing Shadow DOM
+    function findSubmitButton(inputEl) {
+        // Collect ALL button elements in the entire document
+        const allButtons = [];
+        function scanButtons(root, depth = 0) {
+            if (!root || depth > 10) return;
+            const btns = Array.from(root.querySelectorAll ? root.querySelectorAll('button, [role="button"]') : []);
+            allButtons.push(...btns);
+            const all = Array.from(root.querySelectorAll ? root.querySelectorAll('*') : []);
+            for (const n of all) {
+                if (n.shadowRoot) scanButtons(n.shadowRoot, depth + 1);
             }
         }
+        scanButtons(document);
 
-        if (!container) container = document;
-
-        // Disallowed labels to prevent clicking clear, settings, or variations
+        // Disallowed labels (sidebar, clear, close, settings, tools, media, etc.)
         const isDisallowed = (label) => {
             return label.includes('clear') || label.includes('hapus') || 
                    label.includes('batal') || label.includes('cancel') || 
                    label.includes('setting') || label.includes('close') || label.includes('tutup') ||
-                   label.includes('banana') || label.includes('agent') || label.includes('agen');
+                   label.includes('banana') || label.includes('agent') || label.includes('agen') ||
+                   label.includes('media') || label.includes('gambar') || label.includes('karakter') ||
+                   label.includes('adegan') || label.includes('alat') || label.includes('sampah') || 
+                   label.includes('ciutkan') || label.includes('bantuan') || label.includes('help');
         };
 
-        // Filter buttons STRICTLY within the lower dock area (never header or sidebar)
-        const dockButtons = Array.from(container.querySelectorAll('button, [role="button"]')).filter(b => {
+        const dockButtons = allButtons.filter(b => {
             if (b === inputEl || b.disabled || b.getAttribute('aria-disabled') === 'true') return false;
             const rect = b.getBoundingClientRect();
-            if (rect.bottom < (window.innerHeight * 0.45)) return false;
+            // Must be visible and located in the bottom 40% of viewport (the dock area)
+            if (rect.bottom < (window.innerHeight * 0.6) || rect.width < 14 || rect.height < 14) return false;
             const label = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '') + ' ' + (b.title || '')).toLowerCase();
             return !isDisallowed(label);
         });
 
-        // Priority 1: Exact generate button label ("Mulai pembuatan", "generate", "submit", "kirim")
-        for (const b of dockButtons) {
-            const label = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '')).toLowerCase();
-            if (label.includes('pembuatan') || label.includes('buat') || label.includes('generate') || label.includes('kirim') || label.includes('submit')) {
-                return b;
-            }
-        }
+        let bestBtn = null;
+        let bestScore = -1;
 
-        // Priority 2: Arrow icon button (SVG with arrow / send)
         for (const b of dockButtons) {
+            const rect = b.getBoundingClientRect();
+            const label = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '') + ' ' + (b.title || '')).toLowerCase();
+            const cls = (b.className || '').toString().toLowerCase();
+
+            let score = 0;
+
+            // Priority: Known generate button labels
+            if (label.includes('pembuatan') || label.includes('buat') || label.includes('generate') || label.includes('submit') || label.includes('kirim')) {
+                score += 100;
+            }
+            if (cls.includes('generate') || cls.includes('submit') || cls.includes('send')) {
+                score += 80;
+            }
+
+            // Arrow SVG detection (the white circular button has an SVG arrow icon)
             const svg = b.querySelector('svg');
             if (svg) {
-                const html = svg.innerHTML.toLowerCase();
-                if (html.includes('arrow') || html.includes('send') || html.includes('polygon') || html.includes('m2.01')) {
-                    return b;
+                const svgHtml = svg.innerHTML.toLowerCase();
+                if (svgHtml.includes('arrow') || svgHtml.includes('send') || svgHtml.includes('polygon') || svgHtml.includes('m2.01') || svgHtml.includes('path')) {
+                    score += 60;
                 }
+            }
+
+            // Rightmost position: In Google Flow, the white arrow button is always at the far right of the dock
+            score += (rect.right / window.innerWidth) * 50;
+
+            // Circular / square button shape (~30-60px)
+            if (Math.abs(rect.width - rect.height) < 15 && rect.width >= 24 && rect.width <= 64) {
+                score += 30;
+            }
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestBtn = b;
             }
         }
 
-        // Priority 3: Rightmost button in the dock
-        if (dockButtons.length > 0) {
-            dockButtons.sort((a, b) => b.getBoundingClientRect().right - a.getBoundingClientRect().right);
-            return dockButtons[0];
+        if (bestBtn) {
+            console.log('[FlowNexus Pro] Tombol panah submit diidentifikasi:', bestBtn, 'Score:', bestScore);
         }
-
-        return null;
+        return bestBtn;
     }
 
     // 5. Execute Render Workflow for One Prompt (STAYS ON CURRENT PROJECT CANVAS)
@@ -339,6 +383,9 @@
             return null;
         }
 
+        isRenderAborted = false;
+        badge.style.display = 'flex';
+
         // Snapshot all existing images on the page BEFORE submitting
         const preExistingSrcSet = new Set();
         getAllImagesDeep(document).forEach(img => {
@@ -350,17 +397,19 @@
         setInputValue(input, prompt);
         await new Promise(r => setTimeout(r, 600));
 
-        // Submit (Dual Trigger: Dock Arrow Button + Keyboard Enter for robust Angular handling)
+        // Submit (Click dock arrow button + Form submit + Enter key)
         const submitBtn = findSubmitButton(input);
         if (submitBtn) {
-            console.log('[FlowNexus Pro] Mengklik tombol panah submit di dock:', submitBtn);
-            submitBtn.focus();
-            ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evtType => {
-                submitBtn.dispatchEvent(new MouseEvent(evtType, { bubbles: true, cancelable: true, view: window }));
-            });
-            try { submitBtn.click(); } catch(e) {}
+            console.log('[FlowNexus Pro] Menekan tombol panah submit di dock:', submitBtn);
+            triggerButtonClick(submitBtn);
         } else {
-            console.log('[FlowNexus Pro] Tombol submit tidak terdeteksi di dock, menggunakan tombol Enter...');
+            console.warn('[FlowNexus Pro] Tombol panah submit tidak terdeteksi via dock query.');
+        }
+
+        // Form requestSubmit if form exists
+        const form = (submitBtn && submitBtn.closest('form')) || (input && input.closest('form'));
+        if (form && typeof form.requestSubmit === 'function') {
+            try { form.requestSubmit(submitBtn || undefined); } catch(e) {}
         }
 
         // Always also dispatch Enter key on the input to ensure submission in Angular
@@ -378,6 +427,14 @@
             }));
         });
 
+        // Retry check after 2.5s: If prompt is still sitting in the input box, click again!
+        await new Promise(r => setTimeout(r, 2500));
+        if (input && (input.value === prompt || (input.innerText && input.innerText.includes(prompt.slice(0, 20))))) {
+            console.warn('[FlowNexus Pro] Teks prompt masih tertinggal di input, mencoba klik ulang tombol panah submit...');
+            const retryBtn = findSubmitButton(input);
+            if (retryBtn) triggerButtonClick(retryBtn);
+        }
+
         const submitTime = Date.now();
         updateBadge(`<strong>[#${taskId}] Google Flow Merender 2K...</strong>`, '#00e5ff');
 
@@ -386,7 +443,16 @@
         const capturedImages = [];
 
         while (Date.now() - submitTime < maxWaitMs) {
+            if (isRenderAborted) {
+                console.log('[FlowNexus Pro] Render dihentikan oleh pengguna.');
+                throw new Error('Proses dihentikan oleh pengguna.');
+            }
+
             await new Promise(r => setTimeout(r, 1500));
+
+            if (isRenderAborted) {
+                throw new Error('Proses dihentikan oleh pengguna.');
+            }
 
             const elapsedSec = Math.round((Date.now() - submitTime) / 1000);
 
@@ -435,7 +501,7 @@
         }
 
         if (capturedImages.length === 0) {
-            throw new Error('Google Flow belum selesai merender gambar 2K setelah 110 detik. Pastikan kredit kuota harian akun Google Anda belum habis dan periksa error di DevTools.');
+            throw new Error('Google Flow belum selesai merender gambar setelah 110 detik. Pastikan tombol panah kirim (➔) di kanvas tertekan.');
         }
 
         updateBadge(`<strong>✅ [#${taskId}] Selesai (${capturedImages.length} gambar 2K HD)!</strong>`, '#00ffaa');
@@ -538,6 +604,17 @@
                 url: window.location.href,
                 hasInput: Boolean(findPromptInputDeep())
             });
+            return false;
+        }
+
+        if (request.action === 'STOP_RENDER' || request.action === 'ABORT_RENDER') {
+            isRenderAborted = true;
+            updateBadge('<strong>FlowNexus Pro:</strong> Dihentikan', '#ffd600');
+            setTimeout(() => {
+                const badgeEl = document.getElementById('flow-batch-pro-badge');
+                if (badgeEl) badgeEl.style.display = 'none';
+            }, 800);
+            sendResponse({ success: true, aborted: true });
             return false;
         }
 

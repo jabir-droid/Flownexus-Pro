@@ -941,6 +941,11 @@
                 isPaused = false;
                 updateControlButtonsState();
                 addLog('Penghentian batch diminta...', 'error');
+
+                // Instantly notify content script in Google Flow tab to abort waiting and hide HUD badge
+                if (currentTabId) {
+                    chrome.tabs.sendMessage(currentTabId, { action: 'STOP_RENDER' }).catch(() => {});
+                }
             }
         });
     }
