@@ -186,20 +186,72 @@
         return candidates[0].el;
     }
 
-    // Helper: Trigger realistic user click with center coordinates
+    // Helper: Trigger realistic physical-like click on button or its exact coordinate target
     function triggerButtonClick(btn) {
         if (!btn) return false;
         try {
+            // Remove disabled attributes if Angular set them temporarily
+            if (btn.disabled) btn.disabled = false;
+            if (btn.getAttribute('aria-disabled') === 'true') btn.removeAttribute('aria-disabled');
+
             btn.focus();
             const rect = btn.getBoundingClientRect();
-            const clientX = rect.left + rect.width / 2;
-            const clientY = rect.top + rect.height / 2;
-            const opts = { bubbles: true, cancelable: true, view: window, clientX, clientY };
+            const clientX = Math.round(rect.left + rect.width / 2);
+            const clientY = Math.round(rect.top + rect.height / 2);
 
-            ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(evt => {
-                btn.dispatchEvent(new MouseEvent(evt, opts));
+            // Target whatever element is physically on top at those coordinates (e.g. SVG path, ripple span)
+            const topEl = (document.elementFromPoint(clientX, clientY)) || btn;
+
+            // Dispatch realistic PointerEvents (Angular 17+ Material listens to PointerEvents)
+            const pDown = new PointerEvent('pointerdown', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 1,
+                pointerId: 1, pointerType: 'mouse', isPrimary: true
             });
-            btn.click();
+            const mDown = new MouseEvent('mousedown', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 1
+            });
+            const pUp = new PointerEvent('pointerup', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 0,
+                pointerId: 1, pointerType: 'mouse', isPrimary: true
+            });
+            const mUp = new MouseEvent('mouseup', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 0
+            });
+            const clickEvt = new MouseEvent('click', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 0
+            });
+
+            // Fire on top element first (exact mouse hit)
+            topEl.dispatchEvent(pDown);
+            topEl.dispatchEvent(mDown);
+            topEl.dispatchEvent(pUp);
+            topEl.dispatchEvent(mUp);
+            topEl.dispatchEvent(clickEvt);
+
+            // Also fire on the button element if different
+            if (btn !== topEl) {
+                btn.dispatchEvent(pDown);
+                btn.dispatchEvent(mDown);
+                btn.dispatchEvent(pUp);
+                btn.dispatchEvent(mUp);
+                btn.dispatchEvent(clickEvt);
+            }
+
+            // Native clicks
+            try { topEl.click(); } catch(e) {}
+            try { btn.click(); } catch(e) {}
+
+            // Form submit if available
+            const form = btn.closest('form') || (btn.form);
+            if (form && typeof form.requestSubmit === 'function') {
+                try { form.requestSubmit(btn); } catch(e) {}
+            }
+
             return true;
         } catch (e) {
             console.warn('[FlowNexus Pro] triggerButtonClick error:', e);
@@ -210,11 +262,11 @@
 
     // 4. Find Submit (Arrow ➔) Button Across Document Piercing Shadow DOM
     function findSubmitButton(inputEl) {
-        // Collect ALL button elements in the entire document
+        // Collect ALL button and clickable elements in the entire document
         const allButtons = [];
         function scanButtons(root, depth = 0) {
             if (!root || depth > 10) return;
-            const btns = Array.from(root.querySelectorAll ? root.querySelectorAll('button, [role="button"]') : []);
+            const btns = Array.from(root.querySelectorAll ? root.querySelectorAll('button, [role="button"], flow-icon-button, [type="submit"]') : []);
             allButtons.push(...btns);
             const all = Array.from(root.querySelectorAll ? root.querySelectorAll('*') : []);
             for (const n of all) {
@@ -235,10 +287,10 @@
         };
 
         const dockButtons = allButtons.filter(b => {
-            if (b === inputEl || b.disabled || b.getAttribute('aria-disabled') === 'true') return false;
+            if (b === inputEl) return false;
             const rect = b.getBoundingClientRect();
-            // Must be visible and located in the bottom 40% of viewport (the dock area)
-            if (rect.bottom < (window.innerHeight * 0.6) || rect.width < 14 || rect.height < 14) return false;
+            // Must be visible and located in the bottom 45% of viewport (the dock area)
+            if (rect.bottom < (window.innerHeight * 0.55) || rect.width < 14 || rect.height < 14) return false;
             const label = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '') + ' ' + (b.title || '')).toLowerCase();
             return !isDisallowed(label);
         });
@@ -255,10 +307,10 @@
 
             // Priority: Known generate button labels
             if (label.includes('pembuatan') || label.includes('buat') || label.includes('generate') || label.includes('submit') || label.includes('kirim')) {
-                score += 100;
+                score += 120;
             }
             if (cls.includes('generate') || cls.includes('submit') || cls.includes('send')) {
-                score += 80;
+                score += 90;
             }
 
             // Arrow SVG detection (the white circular button has an SVG arrow icon)
@@ -266,16 +318,16 @@
             if (svg) {
                 const svgHtml = svg.innerHTML.toLowerCase();
                 if (svgHtml.includes('arrow') || svgHtml.includes('send') || svgHtml.includes('polygon') || svgHtml.includes('m2.01') || svgHtml.includes('path')) {
-                    score += 60;
+                    score += 70;
                 }
             }
 
-            // Rightmost position: In Google Flow, the white arrow button is always at the far right of the dock
-            score += (rect.right / window.innerWidth) * 50;
+            // Rightmost position: In Google Flow, the white arrow button is always the rightmost element in the dock
+            score += (rect.right / window.innerWidth) * 80;
 
-            // Circular / square button shape (~30-60px)
-            if (Math.abs(rect.width - rect.height) < 15 && rect.width >= 24 && rect.width <= 64) {
-                score += 30;
+            // Circular / square button shape (~24-70px)
+            if (Math.abs(rect.width - rect.height) < 15 && rect.width >= 24 && rect.width <= 70) {
+                score += 40;
             }
 
             if (score > bestScore) {
@@ -397,42 +449,43 @@
         setInputValue(input, prompt);
         await new Promise(r => setTimeout(r, 600));
 
-        // Submit (Click dock arrow button + Form submit + Enter key)
-        const submitBtn = findSubmitButton(input);
-        if (submitBtn) {
-            console.log('[FlowNexus Pro] Menekan tombol panah submit di dock:', submitBtn);
-            triggerButtonClick(submitBtn);
-        } else {
-            console.warn('[FlowNexus Pro] Tombol panah submit tidak terdeteksi via dock query.');
-        }
+        // Submit loop: Attempt up to 5 times until Google Flow accepts and clears the prompt input
+        updateBadge(`<strong>[#${taskId}] Mengirim Prompt ke Flow...</strong>`, '#ffd600');
+        let submitted = false;
+        for (let attempt = 1; attempt <= 5; attempt++) {
+            const submitBtn = findSubmitButton(input);
+            if (submitBtn) {
+                console.log(`[FlowNexus Pro] Menekan tombol panah submit (percobaan #${attempt}):`, submitBtn);
+                triggerButtonClick(submitBtn);
+            } else {
+                console.warn(`[FlowNexus Pro] Tombol panah submit belum ditemukan (percobaan #${attempt})...`);
+            }
 
-        // Form requestSubmit if form exists
-        const form = (submitBtn && submitBtn.closest('form')) || (input && input.closest('form'));
-        if (form && typeof form.requestSubmit === 'function') {
-            try { form.requestSubmit(submitBtn || undefined); } catch(e) {}
-        }
+            // Always also dispatch Enter key on the input to ensure submission in Angular
+            if (input) {
+                input.focus();
+                ['keydown', 'keypress', 'keyup'].forEach(evtType => {
+                    input.dispatchEvent(new KeyboardEvent(evtType, {
+                        key: 'Enter',
+                        code: 'Enter',
+                        keyCode: 13,
+                        which: 13,
+                        bubbles: true,
+                        cancelable: true,
+                        composed: true
+                    }));
+                });
+            }
 
-        // Always also dispatch Enter key on the input to ensure submission in Angular
-        await new Promise(r => setTimeout(r, 250));
-        input.focus();
-        ['keydown', 'keypress', 'keyup'].forEach(evtType => {
-            input.dispatchEvent(new KeyboardEvent(evtType, {
-                key: 'Enter',
-                code: 'Enter',
-                keyCode: 13,
-                which: 13,
-                bubbles: true,
-                cancelable: true,
-                composed: true
-            }));
-        });
+            await new Promise(r => setTimeout(r, 700));
 
-        // Retry check after 2.5s: If prompt is still sitting in the input box, click again!
-        await new Promise(r => setTimeout(r, 2500));
-        if (input && (input.value === prompt || (input.innerText && input.innerText.includes(prompt.slice(0, 20))))) {
-            console.warn('[FlowNexus Pro] Teks prompt masih tertinggal di input, mencoba klik ulang tombol panah submit...');
-            const retryBtn = findSubmitButton(input);
-            if (retryBtn) triggerButtonClick(retryBtn);
+            // Check if submission cleared input or closed popover
+            const isCleared = !input || input.value === '' || !input.value.includes(prompt.slice(0, 15)) || !document.body.contains(input) || input.offsetParent === null;
+            if (isCleared) {
+                console.log('[FlowNexus Pro] Submit berhasil dikonfirmasi (input telah dikosongkan oleh Flow)!');
+                submitted = true;
+                break;
+            }
         }
 
         const submitTime = Date.now();
