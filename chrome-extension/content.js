@@ -180,7 +180,7 @@
         return candidates[0].el;
     }
 
-    // Helper: Trigger realistic click on button and any child icon/ripple
+    // Helper: Trigger realistic physical-like click via native CDP (isTrusted=true) + exact-coordinate DOM events
     function triggerButtonClick(btn) {
         if (!btn) return false;
         try {
@@ -188,26 +188,64 @@
             if (btn.getAttribute('aria-disabled') === 'true') btn.removeAttribute('aria-disabled');
 
             btn.focus();
+            const rect = btn.getBoundingClientRect();
+            const clientX = Math.round(rect.left + rect.width / 2);
+            const clientY = Math.round(rect.top + rect.height / 2);
 
-            // 1. Mouse events sequence on the button
-            const mouseOpts = { bubbles: true, cancelable: true, view: window, buttons: 1 };
-            btn.dispatchEvent(new MouseEvent('pointerdown', mouseOpts));
-            btn.dispatchEvent(new MouseEvent('mousedown', mouseOpts));
-            btn.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, cancelable: true, view: window, buttons: 0 }));
-            btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window, buttons: 0 }));
-            btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, buttons: 0 }));
+            // 1. Send Authentic Native Hardware Left-Click via Chrome DevTools Protocol (CDP)
+            // Injects a real OS-level mouse click with isTrusted=true that Angular & Google Flow treat identically to a human click!
+            try {
+                chrome.runtime.sendMessage({
+                    action: 'NATIVE_CLICK',
+                    x: clientX,
+                    y: clientY
+                }, (res) => {
+                    if (res && res.success) {
+                        console.log(`[FlowNexus Pro] Native CDP hardware click terkirim di (${clientX}, ${clientY})!`);
+                    }
+                });
+            } catch (e) {}
 
-            // 2. Native click on button element
+            // 2. Realistic PointerEvent & MouseEvent with exact physical coordinates
+            const pDown = new PointerEvent('pointerdown', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 1,
+                pointerId: 1, pointerType: 'mouse', isPrimary: true
+            });
+            const mDown = new MouseEvent('mousedown', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 1
+            });
+            const pUp = new PointerEvent('pointerup', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 0,
+                pointerId: 1, pointerType: 'mouse', isPrimary: true
+            });
+            const mUp = new MouseEvent('mouseup', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 0
+            });
+            const clickEvt = new MouseEvent('click', {
+                bubbles: true, cancelable: true, view: window,
+                clientX, clientY, button: 0, buttons: 0
+            });
+
+            btn.dispatchEvent(pDown);
+            btn.dispatchEvent(mDown);
+            btn.dispatchEvent(pUp);
+            btn.dispatchEvent(mUp);
+            btn.dispatchEvent(clickEvt);
+
+            // 3. Native DOM click
             try { btn.click(); } catch(e) {}
 
-            // 3. Native click on inner child (svg, ripple, or touch-target)
-            const inner = btn.querySelector('.mat-mdc-button-touch-target') || btn.querySelector('svg') || btn.querySelector('mat-icon') || btn.firstElementChild;
+            // 4. Click inner child target (e.g. SVG or ripple)
+            const inner = btn.querySelector('.mat-mdc-button-touch-target') || btn.querySelector('svg') || btn.firstElementChild;
             if (inner && inner !== btn) {
                 try { inner.click(); } catch(e) {}
-                inner.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
             }
 
-            // 4. Form submission fallback
+            // 5. Form submission fallback
             const form = btn.closest('form') || btn.form;
             if (form && typeof form.requestSubmit === 'function') {
                 try { form.requestSubmit(btn); } catch(e) {}
@@ -425,6 +463,10 @@
         // Always also dispatch Enter and Ctrl+Enter on the input to ensure Angular submission
         if (input) {
             input.focus();
+            try {
+                chrome.runtime.sendMessage({ action: 'NATIVE_ENTER' });
+            } catch(e) {}
+
             ['keydown', 'keypress', 'keyup'].forEach(evtType => {
                 input.dispatchEvent(new KeyboardEvent(evtType, {
                     key: 'Enter',

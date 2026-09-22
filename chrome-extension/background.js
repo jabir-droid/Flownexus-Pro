@@ -78,6 +78,110 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         return true;
     }
+
+    // 5. Authentic Native Mouse Click via Chrome DevTools Protocol (CDP)
+    // Injects an OS-level physical left-click with isTrusted=true directly on Google Flow
+    if (request.action === 'NATIVE_CLICK') {
+        const tabId = (sender.tab && sender.tab.id) || request.tabId;
+        const x = Math.round(request.x);
+        const y = Math.round(request.y);
+
+        if (!tabId || isNaN(x) || isNaN(y)) {
+            sendResponse({ success: false, error: 'Tab ID atau koordinat tidak valid' });
+            return true;
+        }
+
+        if (!chrome.debugger) {
+            console.warn('[FlowNexus Pro] chrome.debugger API tidak tersedia.');
+            sendResponse({ success: false, error: 'debugger API unavailable' });
+            return true;
+        }
+
+        chrome.debugger.attach({ tabId }, "1.3", () => {
+            if (chrome.runtime.lastError) {
+                console.warn('[FlowNexus Pro] Debugger attach warning:', chrome.runtime.lastError.message);
+                sendResponse({ success: false, error: chrome.runtime.lastError.message });
+                return;
+            }
+
+            // Move mouse pointer to target coordinates
+            chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+                type: "mouseMoved",
+                x: x,
+                y: y
+            }, () => {
+                // Press left mouse button
+                chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+                    type: "mousePressed",
+                    x: x,
+                    y: y,
+                    button: "left",
+                    clickCount: 1
+                }, () => {
+                    // Realistic physical human click dwell time
+                    setTimeout(() => {
+                        // Release left mouse button
+                        chrome.debugger.sendCommand({ tabId }, "Input.dispatchMouseEvent", {
+                            type: "mouseReleased",
+                            x: x,
+                            y: y,
+                            button: "left",
+                            clickCount: 1
+                        }, () => {
+                            // Immediately detach debugger so no UI banner lingers
+                            chrome.debugger.detach({ tabId }, () => {
+                                console.log(`[FlowNexus Pro] Native CDP click sukses di (${x}, ${y})!`);
+                                sendResponse({ success: true, clicked: true });
+                            });
+                        });
+                    }, 80);
+                });
+            });
+        });
+
+        return true;
+    }
+
+    // 6. Authentic Native Keyboard Enter via Chrome DevTools Protocol (CDP)
+    if (request.action === 'NATIVE_ENTER') {
+        const tabId = (sender.tab && sender.tab.id) || request.tabId;
+        if (!tabId || !chrome.debugger) {
+            sendResponse({ success: false });
+            return true;
+        }
+
+        chrome.debugger.attach({ tabId }, "1.3", () => {
+            if (chrome.runtime.lastError) {
+                sendResponse({ success: false });
+                return;
+            }
+            chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+                type: "keyDown",
+                windowsVirtualKeyCode: 13,
+                nativeVirtualKeyCode: 13,
+                macCharCode: 13,
+                unmodifiedText: "\r",
+                text: "\r"
+            }, () => {
+                setTimeout(() => {
+                    chrome.debugger.sendCommand({ tabId }, "Input.dispatchKeyEvent", {
+                        type: "keyUp",
+                        windowsVirtualKeyCode: 13,
+                        nativeVirtualKeyCode: 13,
+                        macCharCode: 13,
+                        unmodifiedText: "\r",
+                        text: "\r"
+                    }, () => {
+                        chrome.debugger.detach({ tabId }, () => {
+                            sendResponse({ success: true });
+                        });
+                    });
+                }, 50);
+            });
+        });
+
+        return true;
+    }
 });
 
 // 4. Guaranteed Subfolder Filename Determiner (Chrome API)
