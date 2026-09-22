@@ -640,8 +640,8 @@
     async function executeBatchLoop() {
         const maxRetries = parseInt(elements.settingMaxRetries.value, 10) || 2;
         const subfolder = (elements.paramSubfolder.value || 'flow-harvest').trim();
-        const delayMin = Math.max(0, parseInt(elements.paramDelayMin.value, 10) || 3);
-        const delayMax = Math.max(delayMin, parseInt(elements.paramDelayMax.value, 10) || 10);
+        const delayMin = Math.max(0, parseInt(elements.paramDelayMin ? elements.paramDelayMin.value : 1, 10) || 1);
+        const delayMax = Math.max(delayMin, parseInt(elements.paramDelayMax ? elements.paramDelayMax.value : 2, 10) || 2);
         const aspectRatio = elements.settingAspectRatio.value || '16:9';
 
         for (let i = 0; i < queue.length; i++) {
