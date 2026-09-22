@@ -1,11 +1,11 @@
 /**
- * Flow Batch Pro - Content Script (v2.1 Stable Canvas Edition)
+ * Flow Batch Pro - Content Script (v2.1.1 Stable Canvas Edition)
  * Injected into Google Flow (flow.google.com).
  * Key Fix:
- *  - STRICTLY confines input & submit search to the bottom prompt dock
- *  - NEVER clicks top-navigation, home icon, or header buttons
+ *  - Accurately targets the Google Flow submit arrow button (.generate-icon-button, [aria-label*="pembuatan"], [type="submit"])
+ *  - Properly supports cdkoverlayorigin attributes without filtering them out
+ *  - Native typing simulation + Dual Submit Trigger (Dock Arrow Button + Enter / Ctrl+Enter)
  *  - STAYS permanently on the user's active project canvas (no unwanted redirects)
- *  - Accurately detects Indonesian placeholder "Apa yang ingin Anda buat?"
  *  - 100% CSP compliant, captures genuine 2K renders & auto-downloads
  */
 
@@ -63,46 +63,40 @@
         badge.style.borderColor = color;
     }
 
-    console.log('%c[Flow Batch Pro]%c v2.1 Siap pada Google Flow Canvas!', 'color:#00ffaa; font-weight:bold;', 'color:#fff;');
+    console.log('%c[Flow Batch Pro]%c v2.1.1 Siap pada Google Flow Canvas!', 'color:#00ffaa; font-weight:bold;', 'color:#fff;');
 
-    // 2. Safe Input Value Setter (React / Custom Web Component Compatible)
     // 2. Safe Input Value Setter (Native Typing Simulation for Angular & Google Flow)
     function setInputValue(element, text) {
+        if (!element) return;
         element.focus();
-
-        // 1. Select all existing text
-        if (element.select) {
-            try { element.select(); } catch(e) {}
-        }
-
-        // 2. Native text insertion using document.execCommand
-        // This fires beforeinput and input events natively, triggering Angular's reactive form controls
-        let inserted = false;
-        try {
-            document.execCommand('selectAll', false, null);
-            inserted = document.execCommand('insertText', false, text);
-        } catch (e) {}
 
         const tag = element.tagName ? element.tagName.toLowerCase() : '';
         const isTextArea = tag === 'textarea';
         const isInput = tag === 'input';
 
-        // 3. Fallback descriptor setter if execCommand didn't apply
-        if (!inserted || (element.value !== text && (!element.innerText || !element.innerText.includes(text.slice(0, 10))))) {
-            if (isTextArea || isInput) {
-                const proto = isTextArea ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
-                const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
-                if (descriptor && descriptor.set) {
-                    descriptor.set.call(element, text);
-                } else {
-                    element.value = text;
-                }
+        if (isTextArea || isInput) {
+            const proto = isTextArea ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+            const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+            if (descriptor && descriptor.set) {
+                descriptor.set.call(element, text);
             } else {
+                element.value = text;
+            }
+        }
+
+        if (element.isContentEditable || element.getAttribute('contenteditable') !== null || element.getAttribute('role') === 'textbox') {
+            element.focus();
+            try {
+                document.execCommand('selectAll', false, null);
+                document.execCommand('delete', false, null);
+                document.execCommand('insertText', false, text);
+            } catch (e) {}
+            if (!element.innerText || !element.innerText.includes(text.slice(0, 10))) {
                 element.innerText = text;
             }
         }
 
-        // 4. Dispatch full spectrum of input events for Angular change detection
+        // Dispatch full spectrum of input events for Angular reactive form controls
         element.dispatchEvent(new Event('focus', { bubbles: true }));
         try {
             element.dispatchEvent(new InputEvent('beforeinput', {
@@ -137,9 +131,9 @@
             const textareas = Array.from(root.querySelectorAll ? root.querySelectorAll('textarea') : []);
             for (const t of textareas) {
                 const r = t.getBoundingClientRect();
-                if (r.width > 50 && r.height > 6 && r.bottom > (window.innerHeight * 0.45) && window.getComputedStyle(t).display !== 'none') {
+                if (r.width > 50 && r.height > 6 && r.bottom > (window.innerHeight * 0.4) && window.getComputedStyle(t).display !== 'none') {
                     const ph = ((t.placeholder || '') + ' ' + (t.getAttribute('aria-label') || '') + ' ' + (t.getAttribute('data-placeholder') || '')).toLowerCase();
-                    candidates.push({ el: t, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.75) });
+                    candidates.push({ el: t, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.7) });
                 }
             }
 
@@ -147,9 +141,9 @@
             const editables = Array.from(root.querySelectorAll ? root.querySelectorAll('[contenteditable], [role="textbox"], [role="combobox"]') : []);
             for (const el of editables) {
                 const r = el.getBoundingClientRect();
-                if (r.width > 50 && r.height > 6 && r.bottom > (window.innerHeight * 0.45)) {
+                if (r.width > 50 && r.height > 6 && r.bottom > (window.innerHeight * 0.4)) {
                     const ph = ((el.innerText || '') + ' ' + (el.getAttribute('aria-label') || '') + ' ' + (el.getAttribute('data-placeholder') || '')).toLowerCase();
-                    candidates.push({ el: el, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.75) });
+                    candidates.push({ el: el, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.7) });
                 }
             }
 
@@ -157,9 +151,9 @@
             const inputs = Array.from(root.querySelectorAll ? root.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])') : []);
             for (const inp of inputs) {
                 const r = inp.getBoundingClientRect();
-                if (r.bottom > (window.innerHeight * 0.45)) {
+                if (r.bottom > (window.innerHeight * 0.4)) {
                     const ph = ((inp.placeholder || '') + ' ' + (inp.getAttribute('aria-label') || '') + ' ' + (inp.getAttribute('data-placeholder') || '')).toLowerCase();
-                    candidates.push({ el: inp, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.75) });
+                    candidates.push({ el: inp, rect: r, isDock: ph.includes('buat') || ph.includes('apa') || ph.includes('prompt') || r.bottom >= (window.innerHeight * 0.7) });
                 }
             }
 
@@ -186,68 +180,35 @@
         return candidates[0].el;
     }
 
-    // Helper: Trigger realistic physical-like click on button or its exact coordinate target
+    // Helper: Trigger realistic click on button and any child icon/ripple
     function triggerButtonClick(btn) {
         if (!btn) return false;
         try {
-            // Remove disabled attributes if Angular set them temporarily
             if (btn.disabled) btn.disabled = false;
             if (btn.getAttribute('aria-disabled') === 'true') btn.removeAttribute('aria-disabled');
 
             btn.focus();
-            const rect = btn.getBoundingClientRect();
-            const clientX = Math.round(rect.left + rect.width / 2);
-            const clientY = Math.round(rect.top + rect.height / 2);
 
-            // Target whatever element is physically on top at those coordinates (e.g. SVG path, ripple span)
-            const topEl = (document.elementFromPoint(clientX, clientY)) || btn;
+            // 1. Mouse events sequence on the button
+            const mouseOpts = { bubbles: true, cancelable: true, view: window, buttons: 1 };
+            btn.dispatchEvent(new MouseEvent('pointerdown', mouseOpts));
+            btn.dispatchEvent(new MouseEvent('mousedown', mouseOpts));
+            btn.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, cancelable: true, view: window, buttons: 0 }));
+            btn.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window, buttons: 0 }));
+            btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, buttons: 0 }));
 
-            // Dispatch realistic PointerEvents (Angular 17+ Material listens to PointerEvents)
-            const pDown = new PointerEvent('pointerdown', {
-                bubbles: true, cancelable: true, view: window,
-                clientX, clientY, button: 0, buttons: 1,
-                pointerId: 1, pointerType: 'mouse', isPrimary: true
-            });
-            const mDown = new MouseEvent('mousedown', {
-                bubbles: true, cancelable: true, view: window,
-                clientX, clientY, button: 0, buttons: 1
-            });
-            const pUp = new PointerEvent('pointerup', {
-                bubbles: true, cancelable: true, view: window,
-                clientX, clientY, button: 0, buttons: 0,
-                pointerId: 1, pointerType: 'mouse', isPrimary: true
-            });
-            const mUp = new MouseEvent('mouseup', {
-                bubbles: true, cancelable: true, view: window,
-                clientX, clientY, button: 0, buttons: 0
-            });
-            const clickEvt = new MouseEvent('click', {
-                bubbles: true, cancelable: true, view: window,
-                clientX, clientY, button: 0, buttons: 0
-            });
-
-            // Fire on top element first (exact mouse hit)
-            topEl.dispatchEvent(pDown);
-            topEl.dispatchEvent(mDown);
-            topEl.dispatchEvent(pUp);
-            topEl.dispatchEvent(mUp);
-            topEl.dispatchEvent(clickEvt);
-
-            // Also fire on the button element if different
-            if (btn !== topEl) {
-                btn.dispatchEvent(pDown);
-                btn.dispatchEvent(mDown);
-                btn.dispatchEvent(pUp);
-                btn.dispatchEvent(mUp);
-                btn.dispatchEvent(clickEvt);
-            }
-
-            // Native clicks
-            try { topEl.click(); } catch(e) {}
+            // 2. Native click on button element
             try { btn.click(); } catch(e) {}
 
-            // Form submit if available
-            const form = btn.closest('form') || (btn.form);
+            // 3. Native click on inner child (svg, ripple, or touch-target)
+            const inner = btn.querySelector('.mat-mdc-button-touch-target') || btn.querySelector('svg') || btn.querySelector('mat-icon') || btn.firstElementChild;
+            if (inner && inner !== btn) {
+                try { inner.click(); } catch(e) {}
+                inner.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+            }
+
+            // 4. Form submission fallback
+            const form = btn.closest('form') || btn.form;
             if (form && typeof form.requestSubmit === 'function') {
                 try { form.requestSubmit(btn); } catch(e) {}
             }
@@ -260,9 +221,8 @@
         }
     }
 
-    // 4. Find Submit (Arrow ➔) Button Across Document Piercing Shadow DOM
+    // 4. Find Submit (Arrow ➔) Button in Bottom Dock Piercing Shadow DOM
     function findSubmitButtons(inputEl) {
-        // Collect ALL button and clickable elements in the entire document
         const allButtons = [];
         function scanButtons(root, depth = 0) {
             if (!root || depth > 10) return;
@@ -290,13 +250,8 @@
         const dockButtons = allButtons.filter(b => {
             if (b === inputEl) return false;
             const rect = b.getBoundingClientRect();
-            // Must be visible and located in the bottom 45% of viewport (the dock area)
-            if (rect.bottom < (window.innerHeight * 0.55) || rect.width < 14 || rect.height < 14) return false;
-
-            // CRITICAL FIX: Exclude cdkoverlayorigin (this is the overlay OPENER trigger, NOT the submit button!)
-            if (b.hasAttribute('cdkoverlayorigin') || b.hasAttribute('cdk-overlay-origin')) {
-                return false;
-            }
+            // Must be visible and located in the bottom half of viewport (the dock area)
+            if (rect.bottom < (window.innerHeight * 0.5) || rect.width < 14 || rect.height < 14) return false;
 
             const label = ((b.innerText || '') + ' ' + (b.getAttribute('aria-label') || '') + ' ' + (b.title || '')).toLowerCase();
             return !isDisallowed(label);
@@ -312,12 +267,16 @@
 
             let score = 0;
 
-            // Priority: Known generate button labels
-            if (label.includes('pembuatan') || label.includes('buat') || label.includes('generate') || label.includes('submit') || label.includes('kirim')) {
-                score += 120;
+            // Highest priority: Google Flow's specific class name
+            if (cls.includes('generate-icon-button')) {
+                score += 500;
             }
-            if (cls.includes('generate') || cls.includes('submit') || cls.includes('send')) {
-                score += 90;
+            // Known submit button labels in Google Flow
+            if (label.includes('mulai pembuatan') || label.includes('pembuatan') || label.includes('buat') || label.includes('generate') || label.includes('submit') || label.includes('kirim')) {
+                score += 300;
+            }
+            if (b.getAttribute('type') === 'submit') {
+                score += 200;
             }
 
             // Arrow SVG detection (the white circular button has an SVG arrow icon)
@@ -325,7 +284,7 @@
             if (svg) {
                 const svgHtml = svg.innerHTML.toLowerCase();
                 if (svgHtml.includes('arrow') || svgHtml.includes('send') || svgHtml.includes('polygon') || svgHtml.includes('m2.01') || svgHtml.includes('path')) {
-                    score += 80;
+                    score += 150;
                 }
             }
 
@@ -334,7 +293,7 @@
 
             // Circular / square button shape (~24-70px)
             if (Math.abs(rect.width - rect.height) < 15 && rect.width >= 24 && rect.width <= 70) {
-                score += 40;
+                score += 50;
             }
 
             if (score > bestScore) {
@@ -417,13 +376,10 @@
         function checkGoogleFlowErrorMessage() {
             const errorSelectors = [
                 '[role="alert"]',
-                '.error-message',
-                '.toast',
                 '.mat-mdc-snack-bar-label',
-                '.notification',
-                '.cdk-overlay-container',
                 'flow-toast',
-                'flow-snackbar'
+                'flow-snackbar',
+                '.toast-message'
             ];
             for (const sel of errorSelectors) {
                 const els = document.querySelectorAll(sel);
@@ -432,14 +388,10 @@
                     if (text.length > 5 && (
                         text.toLowerCase().includes('quota') ||
                         text.toLowerCase().includes('limit') ||
-                        text.toLowerCase().includes('batas') ||
-                        text.toLowerCase().includes('kredit') ||
-                        text.toLowerCase().includes('credit') ||
-                        text.toLowerCase().includes('policy') ||
-                        text.toLowerCase().includes('kebijakan') ||
-                        text.toLowerCase().includes('tidak dapat') ||
-                        text.toLowerCase().includes('unable to') ||
-                        text.toLowerCase().includes('error')
+                        text.toLowerCase().includes('batas kuota') ||
+                        text.toLowerCase().includes('kredit harian') ||
+                        text.toLowerCase().includes('policy violation') ||
+                        text.toLowerCase().includes('pelanggaran kebijakan')
                     )) {
                         return text;
                     }
@@ -462,46 +414,53 @@
         setInputValue(input, prompt);
         await new Promise(r => setTimeout(r, 600));
 
-        // Submit loop: Attempt up to 5 times until Google Flow accepts and clears the prompt input
+        // Submit: Trigger submit button and keyboard events
         updateBadge(`<strong>[#${taskId}] Mengirim Prompt ke Flow...</strong>`, '#ffd600');
-        let submitted = false;
-        for (let attempt = 1; attempt <= 5; attempt++) {
-            const submitBtns = findSubmitButtons(input);
-            for (const submitBtn of submitBtns) {
-                console.log(`[FlowNexus Pro] Menekan tombol panah submit (percobaan #${attempt}):`, submitBtn);
-                triggerButtonClick(submitBtn);
-            }
-            if (submitBtns.length === 0) {
-                console.warn(`[FlowNexus Pro] Tombol panah submit belum ditemukan (percobaan #${attempt})...`);
-            }
-
-            // Always also dispatch Enter key on the input to ensure submission in Angular
-            if (input) {
-                input.focus();
-                ['keydown', 'keypress', 'keyup'].forEach(evtType => {
-                    input.dispatchEvent(new KeyboardEvent(evtType, {
-                        key: 'Enter',
-                        code: 'Enter',
-                        keyCode: 13,
-                        which: 13,
-                        bubbles: true,
-                        cancelable: true,
-                        composed: true
-                    }));
-                });
-            }
-
-            await new Promise(r => setTimeout(r, 700));
-
-            // Check if submission cleared input or closed popover
-            const currentVal = String((input && (input.value !== undefined ? input.value : (input.innerText || input.textContent || ''))) || '');
-            const isCleared = !input || currentVal.trim() === '' || !currentVal.includes((prompt || '').slice(0, 15)) || !document.body.contains(input) || input.offsetParent === null;
-            if (isCleared) {
-                console.log('[FlowNexus Pro] Submit berhasil dikonfirmasi (input telah dikosongkan oleh Flow)!');
-                submitted = true;
-                break;
-            }
+        const submitBtns = findSubmitButtons(input);
+        for (const submitBtn of submitBtns) {
+            console.log(`[FlowNexus Pro] Menekan tombol submit:`, submitBtn);
+            triggerButtonClick(submitBtn);
         }
+
+        // Always also dispatch Enter and Ctrl+Enter on the input to ensure Angular submission
+        if (input) {
+            input.focus();
+            ['keydown', 'keypress', 'keyup'].forEach(evtType => {
+                input.dispatchEvent(new KeyboardEvent(evtType, {
+                    key: 'Enter',
+                    code: 'Enter',
+                    keyCode: 13,
+                    which: 13,
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true
+                }));
+            });
+            try {
+                input.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Enter',
+                    code: 'Enter',
+                    keyCode: 13,
+                    which: 13,
+                    ctrlKey: true,
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true
+                }));
+            } catch(e) {}
+        }
+
+        // Wait 1s and check if prompt lingered, retry click once if needed
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+            const currentVal = String((input && (input.value !== undefined ? input.value : (input.innerText || input.textContent || ''))) || '').trim();
+            if (currentVal.length > 0 && currentVal.includes((prompt || '').slice(0, 15))) {
+                console.log('[FlowNexus Pro] Prompt masih ada di kotak, mencoba klik submit ulang...');
+                for (const submitBtn of submitBtns) {
+                    triggerButtonClick(submitBtn);
+                }
+            }
+        } catch (e) {}
 
         const submitTime = Date.now();
         updateBadge(`<strong>[#${taskId}] Google Flow Merender 2K...</strong>`, '#00e5ff');
@@ -524,11 +483,11 @@
 
             const elapsedSec = Math.round((Date.now() - submitTime) / 1000);
 
-            // Fast-check if Google Flow displayed a quota or policy error toast
+            // Fast-check if Google Flow displayed a real quota error
             const errorMsg = checkGoogleFlowErrorMessage();
             if (errorMsg) {
                 console.error('[FlowNexus Pro] Pesan peringatan terdeteksi di UI Google Flow:', errorMsg);
-                throw new Error(`Google Flow: "${errorMsg.slice(0, 100)}". Kemungkinan kuota/kredit harian habis atau prompt dibatasi.`);
+                throw new Error(`Google Flow: "${errorMsg.slice(0, 100)}".`);
             }
 
             // Wait at least 6s to skip old instant DOM elements
@@ -643,7 +602,7 @@
                 }
             }
         } catch (e) {
-            // Cross-origin fetch note (handled by panel.js)
+            // Handled via canvas or panel.js
         }
 
         // Method B: High-Precision 2K Canvas Upscaler & Exporter
@@ -659,7 +618,6 @@
             console.log(`[FlowNexus Pro] Gambar 2K kanvas siap: ${target.w}x${target.h}px`);
             return canvas.toDataURL('image/jpeg', 0.98);
         } catch (err2) {
-            // Return 2K target URL for panel.js extension-context processing
             return targetSrc || imgEl.src;
         }
     }
@@ -701,5 +659,5 @@
         }
     });
 
-    console.log('[Flow Batch Pro] Content script v2.1 siap di kanvas proyek Flow.');
+    console.log('[Flow Batch Pro] Content script v2.1.1 siap di kanvas proyek Flow.');
 })();
