@@ -277,13 +277,14 @@
 
         // Disallowed labels (sidebar, clear, close, settings, tools, media, etc.)
         const isDisallowed = (label) => {
-            return label.includes('clear') || label.includes('hapus') || 
-                   label.includes('batal') || label.includes('cancel') || 
-                   label.includes('setting') || label.includes('close') || label.includes('tutup') ||
-                   label.includes('banana') || label.includes('agent') || label.includes('agen') ||
-                   label.includes('media') || label.includes('gambar') || label.includes('karakter') ||
-                   label.includes('adegan') || label.includes('alat') || label.includes('sampah') || 
-                   label.includes('ciutkan') || label.includes('bantuan') || label.includes('help');
+            const lbl = (label || '').toLowerCase();
+            return lbl.includes('clear') || lbl.includes('hapus') || 
+                   lbl.includes('batal') || lbl.includes('cancel') || 
+                   lbl.includes('setting') || lbl.includes('close') || lbl.includes('tutup') ||
+                   lbl.includes('banana') || lbl.includes('agent') || lbl.includes('agen') ||
+                   lbl.includes('media') || lbl.includes('gambar') || lbl.includes('karakter') ||
+                   lbl.includes('adegan') || lbl.includes('alat') || lbl.includes('sampah') || 
+                   lbl.includes('ciutkan') || lbl.includes('bantuan') || lbl.includes('help');
         };
 
         const dockButtons = allButtons.filter(b => {
@@ -480,7 +481,8 @@
             await new Promise(r => setTimeout(r, 700));
 
             // Check if submission cleared input or closed popover
-            const isCleared = !input || input.value === '' || !input.value.includes(prompt.slice(0, 15)) || !document.body.contains(input) || input.offsetParent === null;
+            const currentVal = String((input && (input.value !== undefined ? input.value : (input.innerText || input.textContent || ''))) || '');
+            const isCleared = !input || currentVal.trim() === '' || !currentVal.includes((prompt || '').slice(0, 15)) || !document.body.contains(input) || input.offsetParent === null;
             if (isCleared) {
                 console.log('[FlowNexus Pro] Submit berhasil dikonfirmasi (input telah dikosongkan oleh Flow)!');
                 submitted = true;
